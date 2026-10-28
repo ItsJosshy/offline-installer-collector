@@ -1,0 +1,370 @@
+Act as a senior C#/.NET full-stack engineer, software architect and UI/UX designer.
+
+Build a complete, working, self-hosted web application called InstallerVault.
+
+The application will manage an offline software installer library for Windows, macOS and Linux. It must let me browse and select a folder on the machine running the application, scan existing installers, associate them with update sources, discover additional programs, select which operating-system variants to archive, and keep selected installers up to date.
+
+I want an actual application with a polished frontend, persistent backend, functional integrations and deployment instructions—not just a UI mock-up, architecture proposal or collection of disconnected examples.
+
+Use sensible defaults, explain important assumptions, and proceed without asking questions about optional preferences.
+
+MY CONTEXT
+
+I am a C#/.NET developer and use Windows and Ubuntu. I am comfortable with Docker and self-hosting.
+
+My preferred production deployment is an Ubuntu server running Docker Compose, accessible from other devices on my local network. I also want the application to run directly on Windows for local use.
+
+The application is an installer archive manager. It must never automatically install or execute downloaded programs.
+
+1. TECHNOLOGY AND ARCHITECTURE
+
+Use this default stack:
+
+- Backend: ASP.NET Core on .NET 10 LTS.
+- Frontend: React, TypeScript and Vite.
+- Styling: Tailwind CSS and shadcn/ui, with a consistent icon library.
+- Database: SQLite through Entity Framework Core, including migrations.
+- Background processing: an ASP.NET Core hosted service with persistent job records, cancellation and restart recovery.
+- Live progress: SignalR, with reconnection and state recovery.
+- Deployment: a multi-stage Dockerfile and Docker Compose.
+
+Verify current official documentation and compatible stable dependency versions before implementation. Do not use preview frameworks or invent APIs.
+
+Use a modular monolith, not unnecessary microservices. Keep provider integrations, filesystem operations, download handling and application state separated behind clear interfaces.
+
+Build the frontend into static assets served by ASP.NET Core in production. Do not require a separate Node.js production server.
+
+Keep the database and application configuration in a persistent application-data directory, separate from the installer library. Keep SQLite on local storage rather than putting its live database on an SMB/NFS share.
+
+The app must remain usable without internet access for browsing its catalogue, inspecting metadata and downloading already archived files. Bundle frontend assets locally; do not depend on external CDNs, fonts, analytics or cloud authentication.
+
+2. SERVER-SIDE ROOT FOLDER SELECTION
+
+This requirement is essential:
+
+The folder picker must browse the filesystem of the machine running the backend, NOT the filesystem of the device visiting the web application.
+
+For example:
+- When running on my Windows PC, I can select a permitted folder on that PC.
+- When running on my Ubuntu server and accessed from another PC, I select a permitted folder on the Ubuntu server.
+- In Docker, I select directories exposed through configured bind mounts.
+
+Implement a proper server-side directory browser with breadcrumbs, parent navigation, selectable directories, manual path entry and useful permission errors.
+
+Restrict browsing to administrator-configured allowed base directories. Do not expose the entire server filesystem by default.
+
+Validate paths on the backend. Prevent directory traversal and escapes through symlinks or Windows junctions. Apply these checks to browsing, scanning, writing, downloading and deletion—not just folder selection.
+
+Show which library is active, its path, accessibility and available space where this can be determined reliably.
+
+Selecting a folder must not move, rename or delete existing files.
+
+Changing the active library must not redirect an existing download job into a different folder. Bind jobs to a persistent library identifier and immutable destination context.
+
+When a configured drive or mount is unavailable, report the library as unavailable. Do not silently create a replacement empty library and continue downloading.
+
+3. SCANNING AND IMPORTING EXISTING INSTALLERS
+
+Recursively scan the selected root folder for relevant installer and application archive formats, including:
+
+.exe, .msi, .msix, .msixbundle, .appx, .appxbundle,
+.dmg, .pkg, .deb, .rpm, .AppImage,
+.zip, .7z, .tar.gz and .tar.xz.
+
+Treat generic archives as candidates, not proof that a file is an installer or targets a particular OS.
+
+For discovered files, record:
+- Relative path, filename, size and modification time.
+- Application name, version, OS and architecture when reliably known.
+- Metadata origin and identification confidence.
+- SHA-256 where calculated.
+- Whether the file is managed by this application.
+- Source association and last verification state.
+
+Scanning must be non-destructive, cancellable, incremental and tolerant of inaccessible files. Avoid repeatedly hashing unchanged multi-gigabyte files.
+
+Separate:
+- Tracked applications with a configured update source.
+- Discovered files that have not yet been associated with an application.
+- Unidentified or ambiguous files.
+
+Do not claim that a filename scan can always identify the exact application, version or update source.
+
+Provide a review workflow to associate discovered files with a source, correct metadata or leave them unmanaged.
+
+Support importing and exporting the application's own versioned tracking manifest. Do not assume arbitrary pre-existing JSON files follow a schema you invented.
+
+Rescanning must not create duplicate records. Missing files should be marked missing rather than causing destructive database or filesystem cleanup.
+
+Imported unmanaged files must never become eligible for automatic deletion unless I explicitly approve their management.
+
+4. MODERN, CLEAN USER INTERFACE
+
+Make the application feel like a polished self-hosted product.
+
+Use a restrained dark theme by default, with an optional light theme. Use charcoal surfaces, a single consistent accent colour, clear typography, subtle borders, balanced spacing and restrained motion.
+
+Avoid excessive gradients, oversized dashboard cards, decorative charts with no useful data, and cluttered admin-template styling.
+
+Make it responsive for desktop, tablet and mobile. Include accessible contrast, keyboard navigation, visible focus states, labelled controls and proper dialog focus handling.
+
+Use these main areas:
+
+Dashboard:
+Show tracked applications, archived files, storage usage, available updates, active downloads, recent failures and last successful checks. Every metric must come from real application state.
+
+Library:
+Provide a searchable, sortable table with an optional card view. Show application name, source, OS availability, selected variants, archived versions, latest known versions, update state, storage usage and last check time.
+
+Discover / Add Program:
+Search supported catalogues, enter a source-specific package identifier or GitHub repository, and add a direct vendor download.
+
+Downloads:
+Show queued, active, completed, failed and cancelled jobs, with progress, transfer speed and useful error messages. Use indeterminate progress when the total size is unknown.
+
+Settings:
+Manage the root library, source credentials, provider capabilities, schedules, retention, concurrency, allowed paths and backup/export options.
+
+Provide an application-details page or drawer with:
+- Description, publisher and source links.
+- OS/architecture/format selections.
+- Per-variant current and archived versions.
+- Download history and integrity information.
+- Tracking settings, retention and pinning.
+- Actions to check, download, pause tracking and retrieve archived files.
+
+Include intentional empty, loading, offline, permission-denied and failure states. Do not leave nonfunctional buttons in the main interface.
+
+5. OS AVAILABILITY AND TRACKING RULES
+
+Distinguish clearly between:
+
+Available: the configured sources currently advertise this variant.
+Tracked: I have selected this variant for automatic archiving.
+Archived: the required file is actually present locally.
+Unknown: availability or identification has not been established.
+
+Show Windows, macOS and Linux badges with text labels or accessible tooltips.
+
+Support x64, ARM64, x86 and universal variants where relevant.
+
+For Linux packages, also preserve distribution/release requirements where applicable.
+
+Track releases per source, channel, operating system, architecture and package format. Do not assume one version number applies to every platform.
+
+Allow stable, LTS and prerelease tracking where the source supports them. Default to stable.
+
+Allow different sources to supply different OS variants for the same application. Do not automatically merge unrelated products just because their names are similar.
+
+Show when catalogue information was last retrieved. During an internet outage, distinguish “latest known version” from “confirmed current version.”
+
+6. SOURCE INTEGRATIONS
+
+Implement a provider interface with capabilities for searching, resolving applications, retrieving releases, enumerating artifacts and reporting availability.
+
+Separate metadata discovery from native command execution. Downloading a Windows or macOS file should not automatically require a Windows or macOS server.
+
+The core Ubuntu/Docker application must have genuinely working GitHub Releases, direct-download, Homebrew catalogue and WinGet manifest-based paths.
+
+GitHub Releases:
+Use official APIs. Accept owner/repository identifiers or repository URLs. Support selecting releases, stable/prerelease policies and explicit asset filters. Preview matching assets before enabling automatic downloads.
+
+Do not mistake GitHub-generated source archives for compiled installers. Treat OS/architecture detection from asset names as a suggestion when ambiguous.
+
+Support optional authentication, pagination, caching, conditional requests and rate-limit handling.
+
+Direct vendor downloads:
+Support fixed URLs and explicitly configured vendor metadata/version endpoints. Store the source URL and relevant response validators.
+
+Do not claim a fixed URL provides automatic version discovery when it does not. For mutable URLs with unknown versions, report change detection honestly and use content identity to avoid losing previous files.
+
+WinGet:
+Use current official manifests to obtain package identity, version, architecture, installer URL, installer type and expected SHA-256.
+
+Handle relevant manifest inheritance and multi-file metadata correctly. Implement a bounded, cached search/index strategy rather than cloning or scanning the entire manifest repository for every request.
+
+Do not pretend winget.exe runs natively inside a Linux container. Native WinGet execution may be an optional Windows-specific path.
+
+Do not advertise unrestricted Microsoft Store offline support. Surface any licensing, authentication or dependency limitations.
+
+Homebrew:
+Use the official JSON catalogue for discovery and supported metadata resolution. Resolve platform/architecture variations using the documented format.
+
+For supported casks, archive the actual vendor distribution file. Do not execute downloaded Ruby definitions to obtain metadata.
+
+Do not treat formula source archives or isolated bottles as automatically complete standalone offline applications.
+
+Evergreen:
+Provide a capability-aware integration using documented module behaviour where a compatible PowerShell runtime and trusted module are available. Retrieve structured metadata rather than scraping human-readable console output.
+
+AutoPkg:
+Treat native execution as a macOS-specific integration. Only allow explicitly approved recipes; do not provide arbitrary recipe/script execution through the browser.
+
+APT / aptly / apt-offline:
+Treat these as dependency-aware Linux workflows with explicit distribution, release, architecture and, where required, target-machine state. Never label a single downloaded .deb as a complete offline installation by default.
+
+Flatpak:
+Treat offline exports as application-plus-runtime workflows and preserve required repository/origin information. Do not label an ordinary reference file as a complete offline archive.
+
+For host-native integrations, distinguish:
+- Ready.
+- Missing dependency or configuration.
+- Unsupported on this host.
+- Not yet implemented.
+
+Do not disguise an unimplemented adapter as a configuration problem.
+
+Prioritise a fully working core application and implement native extensions where feasible. Clearly document remaining limitations. Do not make optional Windows/macOS agents a prerequisite for the core system, and do not ship an insecure generic remote-command runner.
+
+7. DOWNLOADS, UPDATES AND RETENTION
+
+Support manual checking/downloading for one application or all tracked applications, plus scheduled update checks.
+
+Use configurable daily scheduling by default, with a visible timezone setting. Default the UI timezone to Europe/London.
+
+Prevent overlapping duplicate jobs for the same variant. Persist job state so restarting the application does not lose the queue or leave jobs permanently marked running.
+
+Use configurable bounded concurrency, timeouts, cancellation and bounded retries with backoff. Continue processing other applications when one fails.
+
+Stream downloads to disk. Do not buffer entire installers in memory.
+
+Download into a staging location on the same filesystem as the final destination. Verify the completed file before atomically publishing it.
+
+Preserve the existing working archive when downloads fail.
+
+Validate expected checksums where supplied by a trusted source. Reject mismatches; do not offer “ignore checksum failures” as the normal path.
+
+A locally calculated hash is an integrity record, not proof of publisher authenticity. Present these states separately.
+
+Handle changed assets published under the same version without silently overwriting the previous content.
+
+Use provider-aware version comparison. Do not use naïve string sorting for all version formats.
+
+Keep the latest two successful versions per tracked variant by default. Support pinned versions that are excluded from automatic cleanup.
+
+Apply retention only after a successful replacement. Never delete the last successful copy because a new download was attempted.
+
+Removing tracking must not delete archived files by default. Any explicit deletion must show what will be removed and require confirmation.
+
+8. OFFLINE READINESS
+
+Downloading a file does not automatically make a program installable offline.
+
+Represent artifact type and readiness explicitly, for example:
+- Standalone installer.
+- Portable application.
+- Bootstrapper/web installer.
+- Dependency bundle.
+- Unknown.
+
+Separately record:
+- Download complete.
+- Expected checksum verified, when available.
+- Dependency completeness known/unknown.
+- Offline installation tested/not tested.
+
+Allow manual offline-test notes with target environment and date.
+
+Do not automatically claim offline readiness based only on extension, file size or a successful download.
+
+Special multi-file layouts, such as development-tool offline layouts, should be modelled as artifact sets rather than falsely represented as one ordinary installer.
+
+9. STORAGE AND PORTABILITY
+
+Use a predictable managed layout, such as:
+
+<library-root>/
+  applications/
+    <application-id>/
+      <source-id>/
+        <channel>/
+          <version>/
+            <os>-<architecture>/
+              <artifact-files>
+              metadata.json
+  manifests/
+    library.json
+
+Use identifiers and safe path components that avoid collisions. Preserve original filenames as metadata when sanitisation is necessary.
+
+Persist original and resolved source URLs, release identity, version, platform, architecture, format, file size, hash, download time and verification state.
+
+Keep source credentials and authentication secrets outside the installer library and out of exported manifests.
+
+Provide a documented export/import workflow so tracking configuration and archived files can be recovered on another host.
+
+Do not require destructive reorganisation of existing installer folders.
+
+10. LAN HOSTING AND SECURITY
+
+The app must work through a browser on another machine on my local network.
+
+Provide a documented production port, for example 8080, and explicit LAN-binding configuration. Do not rely on the Vite development server for deployment.
+
+Require authentication for folder browsing, configuration changes, downloads and library access.
+
+Implement a secure first-run administrator setup protected by a one-time setup secret or equivalent mechanism. Do not leave an unauthenticated “first visitor becomes admin” endpoint exposed to the LAN.
+
+Use established password hashing and session handling, appropriate CSRF protection and login rate limiting. Keep production traffic behind HTTPS, with clear reverse-proxy instructions and a separately documented local-development configuration.
+
+Protect against path traversal, unsafe filenames, command injection, untrusted metadata and unrestricted filesystem access.
+
+Protect every server-side URL-fetching path against SSRF, including redirects, IPv4/IPv6 local addresses, link-local/cloud metadata destinations and DNS-rebinding scenarios.
+
+Default to HTTPS public download endpoints. Any private download-source exception must be an explicit administrator-controlled allowlist, not a general bypass.
+
+Never expose arbitrary shell commands through the web UI. Use structured arguments for approved native tools and enforce process timeouts.
+
+Never execute archived installers. Serve them through authenticated download endpoints as attachments, not as executable or active web content.
+
+Run the container as a non-root user. Mount only the directories needed for application data and the installer library. Do not require privileged mode or Docker socket access.
+
+Redact credentials, tokens and sensitive URL parameters from logs and exports.
+
+11. TESTING AND ACCEPTANCE CRITERIA
+
+Write meaningful backend, provider and UI tests. Use deterministic fixtures for provider responses; keep optional live-source smoke tests separate.
+
+At minimum, cover:
+
+- Server-side folder selection and rejection of path/symlink escapes.
+- Scanning an existing mixed installer folder without modifying it.
+- Rescanning without duplicates and handling missing/inaccessible files.
+- Associating an unidentified file with a tracked application.
+- Adding an application through a real provider and selecting variants.
+- Download failure, checksum mismatch, cancellation and restart recovery.
+- Retention preserving pinned and unmanaged files.
+- Correct per-variant version/update state.
+- Authentication, CSRF protection and unsafe-URL rejection.
+- Browsing and retrieving archived files without internet access.
+
+Use browser-based tests for the first-run flow, library browsing, add-program flow and download progress when the environment supports them.
+
+Run the builds, tests and Docker configuration validation available to you. Clearly separate tests actually executed from tests merely supplied. Never claim a successful build or working integration without evidence.
+
+12. DELIVERABLES AND IMPLEMENTATION APPROACH
+
+Start with a brief architecture summary and identify important source limitations, then implement the application. Do not stop after proposing a plan.
+
+If a repository is available, inspect it before editing and preserve unrelated work.
+
+Deliver:
+- Complete backend and frontend source.
+- Database migrations and configuration examples.
+- Dockerfile, compose.yaml and .env.example.
+- Automated tests.
+- README with local development, native Windows hosting, Ubuntu Docker deployment, LAN access, volume permissions, authentication setup, backups and troubleshooting.
+- A provider capability matrix stating what actually works.
+- An honest summary of verification performed and remaining limitations.
+
+The README must clearly explain Docker host-path versus container-path mapping and show how to restrict accessible folders.
+
+Provide a runnable project archive when file-generation tools are available. Otherwise provide a complete project tree and file contents without omitting essential files.
+
+Implement in coherent stages: filesystem/library core, provider discovery, reliable downloads, polished UI, then native-provider extensions and hardening.
+
+Use real persisted state in the production UI. Demo data may exist only in an explicitly separate demo/test mode.
+
+The primary acceptance scenario is:
+
+I deploy the app on my Ubuntu server, open it from my Windows PC, securely sign in, select a mounted folder on the server, scan existing installers, associate or add programs, select Windows/macOS/Linux variants, download them, see real progress and errors, restart the server without losing state, and continue accessing my archived installers when the internet is unavailable.
