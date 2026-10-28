@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+**/node_modules/
+frontend/dist/
+src/InstallerVault/wwwroot/
+.env
+data/
+library/
+artifacts/
+**/TestResults/
+**/playwright-report/
+**/test-results/
+.superpowers/

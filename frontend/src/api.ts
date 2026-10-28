@@ -1,0 +1,3 @@
+let csrf='';
+export function setCsrf(value:string){csrf=value}
+export async function api<T=unknown>(path:string,method='GET',body?:unknown):Promise<T>{const response=await fetch(`/api${path}`,{method,credentials:'same-origin',headers:{'Content-Type':'application/json',...(method==='GET'?{}:{'X-CSRF-TOKEN':csrf})},...(body!==undefined?{body:JSON.stringify(body)}:{})});if(!response.ok){let message=`Request failed (${response.status})`;try{message=(await response.json()).error||message}catch{/* non-JSON gateway response */}if(response.status===401)window.dispatchEvent(new Event('vault:unauthorized'));throw new Error(message)}if(response.status===204)return undefined as T;return response.json()}
